@@ -19,42 +19,45 @@ var (
 	timeout            = flag.Duration("t", 0, "inactivity timeout after which to stop the unit again")
 )
 
-func startSystemdUnit() {
+type unitController struct {
+	conn     *dbus.Conn
+	unitname string
+}
+
+func newUnitController(name string) unitController {
 	conn, err := dbus.SystemBus()
 	if err != nil {
 		log.Fatal(err)
 	}
+	return unitController{conn, name}
+}
 
+func (unitCtrl unitController) startSystemdUnit() {
 	var responseObjPath dbus.ObjectPath
-	obj := conn.Object("org.freedesktop.systemd1", dbus.ObjectPath("/org/freedesktop/systemd1"))
-	err = obj.Call("org.freedesktop.systemd1.Manager.StartUnit", 0, *targetUnit, "replace").Store(&responseObjPath)
+	obj := unitCtrl.conn.Object("org.freedesktop.systemd1", dbus.ObjectPath("/org/freedesktop/systemd1"))
+	err := obj.Call("org.freedesktop.systemd1.Manager.StartUnit", 0, unitCtrl.unitname, "replace").Store(&responseObjPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 }
 
-func stopSystemdUnit() {
-	conn, err := dbus.SystemBus()
-	if err != nil {
-		log.Fatal(err)
-	}
-
+func (unitCtrl unitController) stopSystemdUnit() {
 	var responseObjPath dbus.ObjectPath
-	obj := conn.Object("org.freedesktop.systemd1", dbus.ObjectPath("/org/freedesktop/systemd1"))
-	err = obj.Call("org.freedesktop.systemd1.Manager.StopUnit", 0, *targetUnit, "replace").Store(&responseObjPath)
+	obj := unitCtrl.conn.Object("org.freedesktop.systemd1", dbus.ObjectPath("/org/freedesktop/systemd1"))
+	err := obj.Call("org.freedesktop.systemd1.Manager.StopUnit", 0, unitCtrl.unitname, "replace").Store(&responseObjPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 }
 
-func terminateWithoutActivity(activity <-chan bool) {
+func (unitCtrl unitController) terminateWithoutActivity(activity <-chan bool) {
 	for {
 		select {
 		case <-activity:
 		case <-time.After(*timeout):
-			stopSystemdUnit()
+			unitCtrl.stopSystemdUnit()
 			os.Exit(0)
 		}
 	}
@@ -115,13 +118,15 @@ func main() {
 
 	if os.Getenv("LISTEN_PID") == strconv.Itoa(os.Getpid()) {
 
+		unitCtrl := newUnitController(*targetUnit)
+
 		activityMonitor := make(chan bool)
 		if *timeout != 0 {
-			go terminateWithoutActivity(activityMonitor)
+			go unitCtrl.terminateWithoutActivity(activityMonitor)
 		}
 
 		// first, connect to systemd for starting the unit
-		startSystemdUnit()
+		unitCtrl.startSystemdUnit()
 
 		// then take over the socket from systemd
 		startTCPProxy(activityMonitor)
