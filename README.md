@@ -21,14 +21,14 @@ This is a little tool to add systemd socket activation to services that do not s
 
 ### Usage example: Grafana
 
-Deploy a unit `/etc/systemd/system/socket-activate-grafana.service`:
+Deploy a unit `/etc/systemd/system/socket-activate-grafana.service` (ensure you adjust the `ExecStart` according to the location of `socket-activate`):
 
     [Unit]
     Description=Socket activation proxy for grafana.service
     Requires=socket-activate-grafana.socket
     
     [Service]
-    ExecStart=/usr/local/bin/socket-activate -u grafana.service -a "127.0.0.1:3000" -t 15m
+    ExecStart=/usr/bin/socket-activate -u grafana.service -a "127.0.0.1:3000" -t 15m
     NonBlocking=true
 
 and a corresponding unit `/etc/systemd/system/socket-activate-grafana.socket`:
