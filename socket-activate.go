@@ -94,9 +94,7 @@ func startTCPProxy(activityMonitor chan<- bool) {
 
 		var connBackend net.Conn
 		var tryCount uint
-
-		tryCount = 0
-		for tryCount < *retries {
+		for tryCount = 0; tryCount < *retries; tryCount++ {
 			connBackend, err = net.Dial("tcp", *destinationAddress)
 			if err != nil {
 				fmt.Println(err)
