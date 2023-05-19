@@ -91,6 +91,13 @@ func startTCPProxy(activityMonitor chan<- bool) {
 	}
 	defer l.Close()
 
+	var sock_type string
+	if _, err := os.Stat(*destinationAddress); err != nil {
+		sock_type = "unix"
+	} else {
+		sock_type = "tcp"
+	}
+
 	for {
 		activityMonitor <- true
 		connOutwards, err := l.Accept()
@@ -102,7 +109,7 @@ func startTCPProxy(activityMonitor chan<- bool) {
 		var connBackend net.Conn
 		var tryCount uint
 		for tryCount = 0; tryCount < *retries; tryCount++ {
-			connBackend, err = net.Dial("tcp", *destinationAddress)
+			connBackend, err = net.Dial(sock_type, *destinationAddress)
 			if err != nil {
 				fmt.Println(err)
 				time.Sleep(100 * time.Millisecond)
