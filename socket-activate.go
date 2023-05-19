@@ -75,6 +75,8 @@ func proxyNetworkConnections(from net.Conn, to net.Conn, activityMonitor chan<- 
 	for {
 		i, err := from.Read(buffer)
 		if err != nil {
+			from.Close()
+			to.Close()
 			return // EOF (if anything else, we scrap the connection anyways)
 		}
 		activityMonitor <- true
