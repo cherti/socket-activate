@@ -17,6 +17,7 @@ var (
 	targetUnit         = flag.String("u", "null.service", "corresponding unit")
 	destinationAddress = flag.String("a", "127.0.0.1:80", "destination address")
 	timeout            = flag.Duration("t", 0, "inactivity timeout after which to stop the unit again")
+	retries            = flag.Uint("r", 10, "number of connection attempts (with 100ms delay) before giving up")
 )
 
 type unitController struct {
@@ -92,8 +93,10 @@ func startTCPProxy(activityMonitor chan<- bool) {
 		}
 
 		var connBackend net.Conn
-		tryCount := 0
-		for tryCount < 10 {
+		var tryCount uint
+
+		tryCount = 0
+		for tryCount < *retries {
 			connBackend, err = net.Dial("tcp", *destinationAddress)
 			if err != nil {
 				fmt.Println(err)
@@ -103,7 +106,7 @@ func startTCPProxy(activityMonitor chan<- bool) {
 				break
 			}
 		}
-		if tryCount >= 10 {
+		if tryCount >= *retries {
 			continue
 		}
 
