@@ -54,10 +54,15 @@ func (unitCtrl unitController) stopSystemdUnit() {
 }
 
 func (unitCtrl unitController) terminateWithoutActivity(activity <-chan bool) {
+	var timeoutCh <-chan time.Time
+	if *timeout > 0 {
+		timeoutCh = time.After(*timeout)
+	}
+
 	for {
 		select {
 		case <-activity:
-		case <-time.After(*timeout):
+		case <-timeoutCh:
 			unitCtrl.stopSystemdUnit()
 			os.Exit(0)
 		}
@@ -122,9 +127,7 @@ func main() {
 		unitCtrl := newUnitController(*targetUnit)
 
 		activityMonitor := make(chan bool)
-		if *timeout != 0 {
-			go unitCtrl.terminateWithoutActivity(activityMonitor)
-		}
+		go unitCtrl.terminateWithoutActivity(activityMonitor)
 
 		// first, connect to systemd for starting the unit
 		unitCtrl.startSystemdUnit()
