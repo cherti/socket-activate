@@ -17,6 +17,7 @@ var (
 	targetUnit         = flag.String("u", "null.service", "corresponding unit")
 	destinationAddress = flag.String("a", "127.0.0.1:80", "destination address")
 	timeout            = flag.Duration("t", 0, "inactivity timeout after which to stop the unit again")
+	retries            = flag.Uint("r", 10, "number of connection attempts (with 100ms delay) before giving up")
 )
 
 type unitController struct {
@@ -53,10 +54,15 @@ func (unitCtrl unitController) stopSystemdUnit() {
 }
 
 func (unitCtrl unitController) terminateWithoutActivity(activity <-chan bool) {
+	var timeoutCh <-chan time.Time
+	if *timeout > 0 {
+		timeoutCh = time.After(*timeout)
+	}
+
 	for {
 		select {
 		case <-activity:
-		case <-time.After(*timeout):
+		case <-timeoutCh:
 			unitCtrl.stopSystemdUnit()
 			os.Exit(0)
 		}
@@ -69,6 +75,8 @@ func proxyNetworkConnections(from net.Conn, to net.Conn, activityMonitor chan<- 
 	for {
 		i, err := from.Read(buffer)
 		if err != nil {
+			from.Close()
+			to.Close()
 			return // EOF (if anything else, we scrap the connection anyways)
 		}
 		activityMonitor <- true
@@ -83,6 +91,13 @@ func startTCPProxy(activityMonitor chan<- bool) {
 	}
 	defer l.Close()
 
+	var sock_type string
+	if _, err := os.Stat(*destinationAddress); err != nil {
+		sock_type = "unix"
+	} else {
+		sock_type = "tcp"
+	}
+
 	for {
 		activityMonitor <- true
 		connOutwards, err := l.Accept()
@@ -92,9 +107,9 @@ func startTCPProxy(activityMonitor chan<- bool) {
 		}
 
 		var connBackend net.Conn
-		tryCount := 0
-		for tryCount < 10 {
-			connBackend, err = net.Dial("tcp", *destinationAddress)
+		var tryCount uint
+		for tryCount = 0; tryCount < *retries; tryCount++ {
+			connBackend, err = net.Dial(sock_type, *destinationAddress)
 			if err != nil {
 				fmt.Println(err)
 				time.Sleep(100 * time.Millisecond)
@@ -103,7 +118,7 @@ func startTCPProxy(activityMonitor chan<- bool) {
 				break
 			}
 		}
-		if tryCount >= 10 {
+		if tryCount >= *retries {
 			continue
 		}
 
@@ -121,9 +136,7 @@ func main() {
 		unitCtrl := newUnitController(*targetUnit)
 
 		activityMonitor := make(chan bool)
-		if *timeout != 0 {
-			go unitCtrl.terminateWithoutActivity(activityMonitor)
-		}
+		go unitCtrl.terminateWithoutActivity(activityMonitor)
 
 		// first, connect to systemd for starting the unit
 		unitCtrl.startSystemdUnit()
